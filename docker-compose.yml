@@ -1,0 +1,65 @@
+services:
+  # Local DynamoDB for testing
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: chat-dynamodb
+    ports:
+      - "8000:8000"
+    command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:8000 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+
+  # Backend - build and test
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: chat-backend
+    volumes:
+      - ./backend/src:/app/src:ro
+      - ./backend/tests:/app/tests:ro
+      - backend-node-modules:/app/node_modules
+    environment:
+      - CONNECTIONS_TABLE=chat-connections
+      - MESSAGES_TABLE=chat-messages
+      - AWS_REGION=eu-central-1
+      - AWS_ACCESS_KEY_ID=local
+      - AWS_SECRET_ACCESS_KEY=local
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+
+  # Frontend - build and dev server
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: chat-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src:ro
+      - frontend-node-modules:/app/node_modules
+    environment:
+      - VITE_WEBSOCKET_URL=wss://localhost:8080
+      - VITE_COGNITO_USER_POOL_ID=local-pool
+      - VITE_COGNITO_CLIENT_ID=local-client
+      - VITE_AWS_REGION=eu-central-1
+
+  # Terraform validation
+  terraform:
+    image: hashicorp/terraform:1.6
+    container_name: chat-terraform
+    working_dir: /infrastructure
+    volumes:
+      - ./infrastructure:/infrastructure
+    entrypoint: ["sh", "-c"]
+    command: ["terraform init -backend=false && terraform validate && terraform fmt -check -recursive"]
+
+volumes:
+  backend-node-modules:
+  frontend-node-modules:
