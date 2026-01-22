@@ -7,17 +7,88 @@ import {
   CognitoUserSession,
 } from 'amazon-cognito-identity-js';
 
-const userPool = new CognitoUserPool({
-  UserPoolId: import.meta.env.VITE_COGNITO_USER_POOL_ID as string,
-  ClientId: import.meta.env.VITE_COGNITO_CLIENT_ID as string,
-});
+const userPoolId = import.meta.env.VITE_COGNITO_USER_POOL_ID as string | undefined;
+const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID as string | undefined;
+const mockAuth = import.meta.env.VITE_MOCK_AUTH === 'true';
+
+const isValidUserPoolId = (value?: string) =>
+  !!value && /^[\w-]+_[0-9A-Za-z]+$/.test(value);
+
+const isValidClientId = (value?: string) => !!value && value.length >= 10;
+
+const shouldUseMockAuth =
+  mockAuth || !isValidUserPoolId(userPoolId) || !isValidClientId(clientId);
+
+const userPool = shouldUseMockAuth
+  ? null
+  : new CognitoUserPool({
+      UserPoolId: userPoolId as string,
+      ClientId: clientId as string,
+    });
 
 const currentUser = ref<CognitoUser | null>(null);
 const session = ref<CognitoUserSession | null>(null);
 const isLoading = ref(false);
 const error = ref<string | null>(null);
+const mockUser = ref<{ email: string; nickname: string } | null>(null);
+const mockSession = ref(false);
 
 export function useAuth() {
+  if (shouldUseMockAuth) {
+    const isAuthenticated = computed(() => mockSession.value);
+    const username = computed(() => mockUser.value?.nickname || null);
+
+    async function signUp(email: string, _password: string, nickname: string): Promise<void> {
+      isLoading.value = true;
+      error.value = null;
+      mockUser.value = { email, nickname };
+      isLoading.value = false;
+    }
+
+    async function confirmSignUp(): Promise<void> {
+      isLoading.value = true;
+      error.value = null;
+      isLoading.value = false;
+    }
+
+    async function signIn(email: string, _password: string): Promise<void> {
+      isLoading.value = true;
+      error.value = null;
+      const nickname = email.split('@')[0];
+      mockUser.value = { email, nickname };
+      mockSession.value = true;
+      isLoading.value = false;
+    }
+
+    function signOut(): void {
+      mockUser.value = null;
+      mockSession.value = false;
+    }
+
+    function getIdToken(): string | null {
+      return mockSession.value ? 'mock-token' : null;
+    }
+
+    function checkSession(): Promise<void> {
+      return Promise.resolve();
+    }
+
+    return {
+      currentUser,
+      session,
+      isLoading,
+      error,
+      isAuthenticated,
+      username,
+      signUp,
+      confirmSignUp,
+      signIn,
+      signOut,
+      getIdToken,
+      checkSession,
+    };
+  }
+
   const isAuthenticated = computed(() => !!session.value?.isValid());
   const username = computed(() => currentUser.value?.getUsername() || null);
 
@@ -35,7 +106,7 @@ export function useAuth() {
         new CognitoUserAttribute({ Name: 'nickname', Value: nickname }),
       ];
 
-      userPool.signUp(email, password, attributes, [], (err, result) => {
+      userPool?.signUp(email, password, attributes, [], (err, result) => {
         isLoading.value = false;
         if (err) {
           error.value = err.message;
@@ -60,7 +131,7 @@ export function useAuth() {
 
     const cognitoUser = new CognitoUser({
       Username: email,
-      Pool: userPool,
+      Pool: userPool as CognitoUserPool,
     });
 
     return new Promise((resolve, reject) => {
@@ -82,7 +153,7 @@ export function useAuth() {
 
     const cognitoUser = new CognitoUser({
       Username: email,
-      Pool: userPool,
+      Pool: userPool as CognitoUserPool,
     });
 
     const authDetails = new AuthenticationDetails({
@@ -119,7 +190,7 @@ export function useAuth() {
 
   function checkSession(): Promise<void> {
     return new Promise((resolve) => {
-      const user = userPool.getCurrentUser();
+      const user = userPool?.getCurrentUser();
       if (!user) {
         resolve();
         return;

@@ -8,14 +8,13 @@ terraform {
     }
   }
 
-  # Uncomment after creating S3 bucket for state
-  # backend "s3" {
-  #   bucket         = "chat-app-terraform-state"
-  #   key            = "terraform.tfstate"
-  #   region         = "eu-central-1"
-  #   encrypt        = true
-  #   dynamodb_table = "terraform-state-lock"
-  # }
+  backend "s3" {
+    bucket         = "serverless-chat-terraform-state-us-east-1"
+    key            = "terraform.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+    dynamodb_table = "terraform-state-lock"
+  }
 }
 
 provider "aws" {

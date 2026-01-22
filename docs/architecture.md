@@ -1,290 +1,76 @@
-# Architecture Documentation
+# Architecture
 
-## Overview
-
-This document describes the technical architecture of the Serverless Chat application.
-
-## System Architecture
+System design for the Serverless Chat application (WebSocket chat with Cognito-authenticated users).
 
 ```
-                                    ┌─────────────────────────────────────────────────────────┐
-                                    │                      AWS Cloud                          │
-                                    │                                                         │
-┌──────────┐                        │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐ │
-│          │      HTTPS             │  │ CloudFront  │───▶│     S3      │    │  Cognito    │ │
-│  Browser │───────────────────────▶│  │   (CDN)     │    │  (Static)   │    │ User Pool   │ │
-│          │                        │  └─────────────┘    └─────────────┘    └──────┬──────┘ │
-└────┬─────┘                        │                                               │        │
-     │                              │                                               │        │
-     │ WebSocket (wss://)           │  ┌─────────────────────────────────────┐     │        │
-     │                              │  │              VPC                     │     │        │
-     └─────────────────────────────▶│  │  ┌─────────────────────────────┐    │     │        │
-                                    │  │  │      Private Subnet          │    │     │        │
-                                    │  │  │                              │    │     │        │
-┌─────────────┐                     │  │  │  ┌────────────────────────┐ │    │     │        │
-│ API Gateway │─────────────────────│──│──│─▶│    Lambda Functions    │─│────│─────┘        │
-│ (WebSocket) │                     │  │  │  │                        │ │    │              │
-└─────────────┘                     │  │  │  │  - onConnect           │ │    │              │
-                                    │  │  │  │  - onDisconnect        │ │    │              │
-                                    │  │  │  │  - sendMessage         │ │    │              │
-                                    │  │  │  │  - getMessages         │ │    │              │
-                                    │  │  │  └───────────┬────────────┘ │    │              │
-                                    │  │  │              │              │    │              │
-                                    │  │  └──────────────│──────────────┘    │              │
-                                    │  │                 │                   │              │
-                                    │  │  ┌──────────────┘                   │              │
-                                    │  │  │  NAT Gateway                     │              │
-                                    │  │  │                                  │              │
-                                    │  └──│──────────────────────────────────┘              │
-                                    │     │                                                 │
-                                    │     ▼                                                 │
-                                    │  ┌─────────────┐                                      │
-                                    │  │  DynamoDB   │                                      │
-                                    │  │  - Connections                                     │
-                                    │  │  - Messages │                                      │
-                                    │  └─────────────┘                                      │
-                                    └─────────────────────────────────────────────────────────┘
+Browser (Vue) ── HTTPS ──► CloudFront ──► S3 (SPA hosting)
+          │
+          └─ wss:// ──► API Gateway (WebSocket)
+                             │
+                             ▼
+                        Lambda (connect, disconnect, sendMessage, getMessages)
+                             │
+                             ▼
+                         DynamoDB (connections, messages + GSI userId)
+                             │
+                             ▼
+                          Cognito (user pool)
 ```
 
-## Component Details
+## Flow
+1. User signs in with Cognito (local dev can mock auth).
+2. Frontend opens a WebSocket: `wss://<id>.execute-api.<region>.amazonaws.com/<stage>?userId&username`.
+3. `$connect` stores connection with TTL in DynamoDB.
+4. `sendMessage` writes to `messages` and uses `execute-api:ManageConnections` to push to all active connections.
+5. `getMessages` queries history (room-based, sorted by `createdAt`/`messageId`) and returns `messageHistory`.
+6. `$disconnect` removes the connection record.
 
-### 1. Frontend (Vue.js)
+## Components
 
-**Technology:** Vue 3, TypeScript, Tailwind CSS, Pinia
+### Frontend
+- Vue 3 + TypeScript + Vite + Tailwind, Pinia store for chat state.
+- WebSocket client in `useWebSocket.ts`; authentication helper in `useAuth.ts` (Cognito or mocked).
+- SPA hosted on CloudFront with OAC-protected S3 origin.
 
-**Structure:**
-```
-frontend/src/
-├── components/
-│   ├── ChatRoom.vue      # Main chat container
-│   ├── MessageList.vue   # Message list with auto-scroll
-│   ├── MessageInput.vue  # Input field for messages
-│   └── UserLogin.vue     # Login/registration form
-├── composables/
-│   ├── useAuth.ts        # Cognito authentication
-│   └── useWebSocket.ts   # WebSocket connection management
-└── stores/
-    └── chat.ts           # Pinia store for chat state
-```
+### WebSocket API (API Gateway v2)
+- Routes: `$connect`, `$disconnect`, `sendMessage`, `getMessages`.
+- Route selection: `$request.body.action`.
+- Stage: `dev` by default; throttling burst/rate: `500/1000`.
 
-**Data Flow:**
-1. User logs in via Cognito
-2. After login: WebSocket connection established with user ID
-3. Messages sent/received via WebSocket
-4. State management via Pinia store
+### Lambda Functions (Node.js 20, TypeScript)
+- `connect`: persists `connectionId`, `userId`, `username`, `connectedAt`, `ttl`.
+- `disconnect`: deletes connection.
+- `sendMessage`: writes message item, broadcasts to all active connections.
+- `getMessages`: queries by `roomId` with optional `limit`; supports GSI query by `userId`.
+- IAM policy: DynamoDB CRUD on the two tables (+ GSI), `execute-api:ManageConnections`, CloudWatch Logs, VPC ENI management.
+- Networking: runs inside private subnets; outbound via NAT Gateway.
 
-### 2. API Gateway (WebSocket)
+### Data Layer (DynamoDB)
+- Tables are named `${project}-${env}-connections` and `${project}-${env}-messages`.
+- `connections`: PK `connectionId` (TTL on `ttl`).
+- `messages`: PK `roomId`, SK `sortKey` = `timestamp#messageId`; GSI `userId-index` on `userId + sortKey`.
 
-**Routes:**
-| Route | Lambda | Description |
-|-------|--------|-------------|
-| `$connect` | connect | Establish connection, save to DB |
-| `$disconnect` | disconnect | Close connection, remove from DB |
-| `sendMessage` | sendMessage | Broadcast message to all clients |
-| `getMessages` | getMessages | Retrieve message history |
+### Identity
+- Cognito User Pool (email/username), app client without secret for SPA.
+- Password policy: ≥8 chars, uppercase, lowercase, numbers (see module defaults).
+- Local dev: `VITE_MOCK_AUTH=true` bypasses Cognito.
 
-**Authentication:**
-- Connection via query parameters: `?userId=xxx&username=xxx`
-- Cognito token validation possible (optionally implemented)
+### Networking & Delivery
+- VPC `10.0.0.0/16` with two public + two private subnets (first two AZs).
+- Internet Gateway + NAT Gateway (egress for Lambdas).
+- CloudFront enforces HTTPS; SPA routing supported (index fallback).
 
-### 3. Lambda Functions
+## Observability & Ops
+- CloudWatch Log Groups per Lambda with 14-day retention.
+- Health check for DynamoDB Local in Docker.
+- Terraform outputs: WebSocket endpoint, Cognito Pool ID, Client ID, CloudFront URL, S3 bucket.
 
-**Runtime:** Node.js 20.x
-**Language:** TypeScript
-**Bundling:** esbuild
+## Scaling & Limits
+- API Gateway WebSocket: auto-scales (account-level connection limits apply).
+- Lambda: AWS defaults (1,000 concurrent unless raised); 256 MB, 30s timeout.
+- DynamoDB: on-demand capacity; 400 KB item limit.
+- At high fan-out (>100 connections) broadcasting from a single Lambda may need batching/back-pressure.
 
-#### connect.ts
-```
-Input:  WebSocket $connect event
-        Query params: userId, username
-Action: Save connection to DynamoDB
-Output: 200 OK / 500 Error
-```
-
-#### disconnect.ts
-```
-Input:  WebSocket $disconnect event
-Action: Delete connection from DynamoDB
-Output: 200 OK / 500 Error
-```
-
-#### sendMessage.ts
-```
-Input:  { action: "sendMessage", data: { content, roomId? } }
-Action: 1. Save message to DynamoDB
-        2. Broadcast to all connections
-Output: { success: true, messageId } / Error
-```
-
-#### getMessages.ts
-```
-Input:  { action: "getMessages", data: { roomId?, limit? } }
-Action: Query messages from DynamoDB
-Output: Message[] via WebSocket to client
-```
-
-### 4. DynamoDB Tables
-
-#### Connections Table
-```
-Primary Key: connectionId (String)
-
-Attributes:
-- connectionId: String  (PK)
-- userId: String
-- username: String
-- connectedAt: Number
-- ttl: Number (24h expiry)
-```
-
-**Access Patterns:**
-- Get connection by ID
-- Scan all connections (for broadcast)
-- Auto-delete via TTL
-
-#### Messages Table
-```
-Primary Key: roomId (String)
-Sort Key: sortKey (String) = "timestamp#messageId"
-
-Attributes:
-- roomId: String (PK)
-- sortKey: String (SK)
-- messageId: String
-- userId: String
-- username: String
-- content: String
-- createdAt: Number
-
-GSI: userId-index (for user history)
-```
-
-**Access Patterns:**
-- Query messages by room (sorted by time)
-- Query messages by user (via GSI)
-
-### 5. Cognito User Pool
-
-**Configuration:**
-- Username: Email
-- Verification: Email
-- Password: Min. 8 characters, uppercase, lowercase, numbers
-
-**Attributes:**
-- email (required)
-- nickname (optional)
-
-**Auth Flows:**
-- USER_PASSWORD_AUTH
-- USER_SRP_AUTH
-- REFRESH_TOKEN_AUTH
-
-### 6. Frontend Hosting (S3 + CloudFront)
-
-**S3 Bucket:**
-- Private (no public access)
-- Versioning enabled
-- Origin Access Control for CloudFront
-
-**CloudFront:**
-- HTTPS only
-- Gzip compression
-- SPA routing (404 → index.html)
-- Price Class: 100 (cheapest)
-
-## Network Architecture
-
-### VPC Layout
-```
-VPC: 10.0.0.0/16
-
-├── Public Subnet A:  10.0.0.0/24  (eu-central-1a)
-│   └── NAT Gateway
-│
-├── Public Subnet B:  10.0.1.0/24  (eu-central-1b)
-│
-├── Private Subnet A: 10.0.10.0/24 (eu-central-1a)
-│   └── Lambda Functions
-│
-└── Private Subnet B: 10.0.11.0/24 (eu-central-1b)
-    └── Lambda Functions
-```
-
-**Routing:**
-- Public subnets → Internet Gateway
-- Private subnets → NAT Gateway → Internet
-
-**Why VPC for Lambda?**
-- Better isolation
-- Future-proof for RDS/ElastiCache
-- Compliance requirements
-
-## Security
-
-### IAM Permissions
-
-**Lambda Role:**
-```json
-{
-  "Effect": "Allow",
-  "Action": [
-    "dynamodb:GetItem",
-    "dynamodb:PutItem",
-    "dynamodb:DeleteItem",
-    "dynamodb:Query",
-    "dynamodb:Scan"
-  ],
-  "Resource": [
-    "arn:aws:dynamodb:*:*:table/connections",
-    "arn:aws:dynamodb:*:*:table/messages"
-  ]
-}
-```
-
-### Security Measures
-
-1. **S3:** Private bucket, CloudFront access only
-2. **Lambda:** VPC-isolated, minimal IAM permissions
-3. **DynamoDB:** Encryption at rest
-4. **CloudFront:** HTTPS only
-5. **Cognito:** Password policy, email verification
-
-## Scalability
-
-| Component | Scaling |
-|-----------|---------|
-| API Gateway | Automatic (up to 10,000 connections default) |
-| Lambda | Automatic (1000 concurrent default) |
-| DynamoDB | On-demand (pay per request) |
-| CloudFront | Global edge network |
-| S3 | Unlimited |
-
-### Known Limits
-
-- **WebSocket Connections:** 500 per account (increasable)
-- **Lambda Concurrent:** 1000 (increasable)
-- **DynamoDB Item Size:** 400 KB max
-- **Message Broadcast:** At >100 connections, Lambda timeout may occur
-
-## Cost Estimate (Dev Environment)
-
-| Service | Estimated Cost/Month |
-|---------|---------------------|
-| Lambda | ~$0 (Free Tier: 1M requests) |
-| API Gateway | ~$1-5 |
-| DynamoDB | ~$0 (on-demand, minimal) |
-| S3 | ~$0.03 |
-| CloudFront | ~$0-1 |
-| NAT Gateway | ~$35 (largest cost factor!) |
-| **Total** | **~$35-45** |
-
-**Note:** NAT Gateway is the largest cost factor. For production, consider VPC Endpoints for DynamoDB.
-
-## Extension Possibilities
-
-1. **Private Rooms:** roomId already implemented, UI missing
-2. **Message History Pagination:** Cursor-based pagination
-3. **Typing Indicators:** New WebSocket event
-4. **File Sharing:** S3 pre-signed URLs
-5. **Push Notifications:** SNS integration
-6. **Rate Limiting:** API Gateway throttling
+## Cost Notes
+- Main fixed cost in dev: NAT Gateway (~$35/mo). Everything else is pay-per-request and typically negligible for demos.
+- For cost-sensitive dev, consider temporarily removing VPC/NAT or using VPC endpoints for DynamoDB.

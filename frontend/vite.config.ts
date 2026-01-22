@@ -4,10 +4,16 @@ import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [vue()],
+  define: {
+    global: 'globalThis',
+  },
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
     },
+  },
+  optimizeDeps: {
+    include: ['buffer', 'process'],
   },
   server: {
     port: 3000,

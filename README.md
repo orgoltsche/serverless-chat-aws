@@ -1,274 +1,148 @@
 # Serverless Chat Application
 
-A real-time chat application built on AWS serverless architecture with WebSocket support.
+Real-time WebSocket chat built on AWS serverless primitives with a Vue 3 frontend. This repository contains everything from infrastructure as code to frontend and backend sources.
 
-## Project Overview
+- Docs: `docs/architecture.md` (system design), `docs/status.md` (project health), `todo.md` (deployment runbook)
 
-| Aspect | Details |
-|--------|---------|
-| **Frontend** | Vue 3 + TypeScript + Tailwind CSS |
-| **Backend** | AWS Lambda (Node.js 20) + TypeScript |
-| **Database** | Amazon DynamoDB |
-| **Auth** | Amazon Cognito |
-| **API** | API Gateway WebSocket |
-| **Hosting** | S3 + CloudFront |
-| **IaC** | Terraform |
-| **CI/CD** | GitHub Actions |
+## Highlights
+- WebSocket messaging via API Gateway + Lambda + DynamoDB
+- Cognito-based auth with optional mocked auth for local work
+- Fully IaC with Terraform (VPC, networking, data, hosting)
+- TypeScript end-to-end; linting, tests, and builds runnable via Docker/Make
 
-## Architecture
+## Stack
 
-```
-┌─────────────┐     ┌─────────────────┐     ┌─────────────┐
-│   Browser   │────▶│  CloudFront     │────▶│     S3      │
-│  (Vue.js)   │     │  (CDN)          │     │  (Static)   │
-└──────┬──────┘     └─────────────────┘     └─────────────┘
-       │
-       │ WebSocket
-       ▼
-┌─────────────────┐     ┌─────────────┐     ┌─────────────┐
-│  API Gateway    │────▶│   Lambda    │────▶│  DynamoDB   │
-│  (WebSocket)    │     │  Functions  │     │  Tables     │
-└─────────────────┘     └──────┬──────┘     └─────────────┘
-                               │
-                        ┌──────┴──────┐
-                        │   Cognito   │
-                        │  User Pool  │
-                        └─────────────┘
-```
+| Area | Details |
+|------|---------|
+| Frontend | Vue 3 + TypeScript + Vite + Tailwind |
+| Backend | AWS Lambda (Node.js 20, TypeScript, esbuild) |
+| Messaging | API Gateway WebSocket routes: `$connect`, `$disconnect`, `sendMessage`, `getMessages` |
+| Data | DynamoDB tables: connections, messages (GSI on userId) |
+| Auth | Cognito User Pool (email login). Local dev can mock auth. |
+| Delivery | S3 + CloudFront (SPA), VPC with NAT for Lambdas |
+| IaC / CI | Terraform, GitHub Actions (lint/test/security + deploy) |
 
-## Quick Start
-
-### Prerequisites
-
-- Docker & Docker Compose
-- Make (optional, simplifies commands)
-- AWS CLI (for deployment)
-- Terraform >= 1.6
-
-### Local Development with Docker
-
-```bash
-# Build all containers
-make build
-
-# Run backend tests
-make test-backend
-
-# Run frontend tests
-make test-frontend
-
-# Validate Terraform
-make validate-terraform
-
-# Run all validations (tests + lint + Terraform)
-make validate-all
-
-# Start frontend dev server (http://localhost:3000)
-make up
-```
-
-### Without Make
-
-```bash
-# Build containers
-docker compose build
-
-# Backend tests
-docker compose run --rm backend npm test
-
-# Frontend build
-docker compose run --rm frontend npm run build
-
-# Terraform validation
-docker compose run --rm terraform
-```
-
-## Project Structure
+## Repository Layout
 
 ```
 .
-├── backend/                 # Lambda Functions (TypeScript)
-│   ├── src/
-│   │   ├── handlers/        # Lambda handlers (connect, disconnect, etc.)
-│   │   ├── services/        # DynamoDB & WebSocket services
-│   │   └── types/           # TypeScript interfaces
-│   └── tests/
-│       ├── unit/            # Unit tests
-│       └── integration/     # Integration tests (local DynamoDB)
-│
-├── frontend/                # Vue.js Application
-│   ├── src/
-│   │   ├── components/      # Vue components
-│   │   ├── composables/     # Vue composables (useAuth, useWebSocket)
-│   │   └── stores/          # Pinia stores
-│   └── tests/
-│
-├── infrastructure/          # Terraform IaC
-│   ├── modules/
-│   │   ├── vpc/             # VPC with public/private subnets
-│   │   ├── dynamodb/        # DynamoDB tables
-│   │   ├── cognito/         # Cognito User Pool
-│   │   ├── lambda/          # Lambda functions
-│   │   ├── api-gateway/     # WebSocket API
-│   │   └── frontend-hosting/# S3 + CloudFront
-│   └── environments/
-│       ├── dev.tfvars
-│       └── prod.tfvars
-│
-├── .github/workflows/       # CI/CD Pipelines
-│   ├── ci.yml               # Tests, lint, security scan
-│   └── deploy.yml           # Terraform apply + deploy
-│
-├── docker-compose.yml       # Docker setup for local development
-├── Makefile                 # Simplified commands
-└── docs/                    # Documentation
+├── backend/                 # Lambda functions (TypeScript + Jest + ESLint)
+├── frontend/                # Vue app (Vitest + ESLint + Tailwind)
+├── infrastructure/          # Terraform (VPC, API GW, Lambda, DynamoDB, Cognito, S3/CloudFront)
+├── docs/                    # Architecture + status docs
+├── screenshots/             # UI snapshots
+├── docker-compose.yml       # Local dev/test toolchain
+└── Makefile                 # Convenience targets
 ```
 
-## AWS Services
+## Local Development
 
-| Service | Purpose |
-|---------|---------|
-| **API Gateway** | WebSocket API for real-time communication |
-| **Lambda** | 4 functions: connect, disconnect, sendMessage, getMessages |
-| **DynamoDB** | 2 tables: Connections, Messages |
-| **Cognito** | User authentication (email + password) |
-| **S3** | Static website hosting |
-| **CloudFront** | CDN for frontend |
-| **VPC** | Network isolation for Lambda |
+### Prerequisites
+- Docker + Docker Compose
+- Make (optional, simplifies commands)
+- Node 20+ only if you want to run packages outside Docker
+- Terraform >= 1.6 and AWS CLI for deployments
 
-## Deployment
-
-### 1. Configure AWS Credentials
-
+### Quick Start (Docker + Make)
 ```bash
-aws configure
-# Or set environment variables:
-export AWS_ACCESS_KEY_ID=...
-export AWS_SECRET_ACCESS_KEY=...
-export AWS_REGION=eu-central-1
+# First build images (one-time or after dependency changes)
+make build
+
+# Start frontend dev server + DynamoDB Local
+make up   # http://localhost:3000
+
+# Stop containers/volumes when done
+make down
 ```
 
-### 2. Create Terraform State Backend (one-time)
-
+### Validation and Tests
 ```bash
-# S3 bucket for Terraform state
-aws s3 mb s3://your-project-terraform-state --region eu-central-1
-
-# DynamoDB table for state locking
-aws dynamodb create-table \
-  --table-name terraform-state-lock \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST
+make test-backend           # Jest (unit + integration) in Docker
+make test-frontend          # Typecheck + Vitest + build in Docker
+make lint-all               # ESLint for backend + frontend
+make validate-terraform     # terraform init -backend=false && validate
+make validate-all           # lint + tests + terraform validate
 ```
 
-### 3. Enable Terraform Backend in main.tf
-
-```hcl
-backend "s3" {
-  bucket         = "your-project-terraform-state"
-  key            = "terraform.tfstate"
-  region         = "eu-central-1"
-  encrypt        = true
-  dynamodb_table = "terraform-state-lock"
-}
-```
-
-### 4. Deploy Infrastructure
-
+### Without Make
 ```bash
-cd infrastructure
-terraform init
-terraform plan -var-file=environments/dev.tfvars
-terraform apply -var-file=environments/dev.tfvars
+docker compose build
+docker compose up frontend dynamodb-local
+docker compose run --rm backend npm test
+docker compose run --rm frontend npm run typecheck && docker compose run --rm frontend npm test && docker compose run --rm frontend npm run build
+docker compose run --rm terraform
+docker compose down
 ```
 
-### 5. Set GitHub Actions Secrets
+## Environment Configuration
 
-For automatic deployment via CI/CD:
-
-| Secret | Description |
-|--------|-------------|
-| `AWS_ACCESS_KEY_ID` | AWS Access Key |
-| `AWS_SECRET_ACCESS_KEY` | AWS Secret Key |
-| `SONAR_TOKEN` | SonarCloud Token (optional) |
-
-## Testing
-
-### Test Strategy
-
-| Phase | Tool | Description |
-|-------|------|-------------|
-| **Unit Tests** | Jest / Vitest | Isolated function logic |
-| **Integration Tests** | Jest + DynamoDB Local | DynamoDB operations |
-| **Static Analysis** | ESLint + tfsec | Code quality + security |
-| **Security Scan** | npm audit, tfsec | Dependency & IaC security |
-
-### Running Tests
-
-```bash
-# All tests
-make test-all
-
-# Backend only
-make test-backend
-
-# With coverage
-make test-backend-coverage
-
-# Integration tests (requires DynamoDB Local)
-docker compose up -d dynamodb-local
-docker compose run --rm backend npm run test:integration
+### Frontend `.env`
+Create `frontend/.env` for any build beyond the mocked local defaults:
+```env
+VITE_WEBSOCKET_URL=wss://<api-id>.execute-api.<region>.amazonaws.com/<stage>
+VITE_COGNITO_USER_POOL_ID=<user-pool-id>
+VITE_COGNITO_CLIENT_ID=<app-client-id>
+VITE_AWS_REGION=<aws-region>
+# Optional: bypass Cognito for local-only development
+VITE_MOCK_AUTH=true
 ```
+`docker-compose.yml` ships with `VITE_MOCK_AUTH=true` and dummy IDs so the UI works without Cognito.
 
-## API Reference
+### Backend (Lambda / Docker)
+| Variable | Purpose | Default in Docker |
+|----------|---------|-------------------|
+| `CONNECTIONS_TABLE` | DynamoDB connections table | `chat-connections` |
+| `MESSAGES_TABLE` | DynamoDB messages table | `chat-messages` |
+| `AWS_REGION` | AWS region used by SDK | `eu-central-1` |
+| `DYNAMODB_ENDPOINT` | Override for DynamoDB Local (integration tests) | `http://dynamodb-local:8000` |
 
-### WebSocket Events
+## Infrastructure & Deployment
+- Remote state is enabled in `infrastructure/main.tf` and expects:
+  - S3 bucket: `serverless-chat-terraform-state-us-east-1`
+  - DynamoDB table: `terraform-state-lock` (PK `LockID`)
+  Create these (or update names) before running `terraform init`.
+- Validate locally without touching AWS:
+  ```bash
+  docker compose run --rm terraform   # init -backend=false + validate
+  ```
+- Deploy (with AWS credentials configured):
+  ```bash
+  cd infrastructure
+  terraform init                      # uses the S3 backend configured above
+  terraform plan -var-file=environments/dev.tfvars
+  terraform apply -var-file=environments/dev.tfvars
+  ```
+- Artifacts: Terraform currently points Lambda functions to `modules/lambda/placeholder.zip`; replace this with a bundled artifact from `backend` (e.g., upload via CI before `apply`).
+- Outputs (WebSocket URL, Cognito Pool ID, Client ID, CloudFront URL) feed the frontend `.env`.
 
-#### Client → Server
+### GitHub Actions
+- Pipelines expect secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, optional `SONAR_TOKEN`.
+- Typical stages: install deps → lint → tests → Terraform plan/apply (on main).
 
-| Action | Payload | Description |
-|--------|---------|-------------|
-| `sendMessage` | `{ content: string, roomId?: string }` | Send a message |
-| `getMessages` | `{ roomId?: string, limit?: number }` | Retrieve message history |
+## WebSocket API Contract
 
-#### Server → Client
+| Action | Payload | Response |
+|--------|---------|----------|
+| `$connect` | `?userId=<id>&username=<name>` | Registers connection with TTL |
+| `$disconnect` | - | Removes connection |
+| `sendMessage` | `{ content: string, roomId?: string }` | Broadcasts and returns `messageId` |
+| `getMessages` | `{ roomId?: string, limit?: number }` | Emits `messageHistory` with `Message[]` |
 
-| Type | Payload | Description |
-|------|---------|-------------|
-| `newMessage` | `Message` | New message received |
-| `messageHistory` | `Message[]` | Message history response |
-
-### Message Format
-
-```typescript
+```ts
 interface Message {
   roomId: string;
   messageId: string;
   userId: string;
   username: string;
   content: string;
-  createdAt: number;
+  createdAt: number; // epoch millis
 }
 ```
 
-## Environment Variables
-
-### Frontend (.env)
-
-```env
-VITE_WEBSOCKET_URL=wss://xxx.execute-api.eu-central-1.amazonaws.com/dev
-VITE_COGNITO_USER_POOL_ID=eu-central-1_xxxxxxxx
-VITE_COGNITO_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxx
-VITE_AWS_REGION=eu-central-1
-```
-
-### Backend (Lambda Environment)
-
-| Variable | Description |
-|----------|-------------|
-| `CONNECTIONS_TABLE` | DynamoDB Connections table name |
-| `MESSAGES_TABLE` | DynamoDB Messages table name |
+## Troubleshooting
+- Terraform init fails: ensure the remote state bucket/table exist or temporarily run with `-backend=false` for validation.
+- WebSocket 403 locally: set `VITE_MOCK_AUTH=true` and use the Docker compose defaults.
+- DynamoDB Local tests fail: confirm `docker compose up dynamodb-local` is running and `DYNAMODB_ENDPOINT` is set.
 
 ## License
 

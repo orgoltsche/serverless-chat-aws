@@ -49,6 +49,7 @@ services:
       - VITE_COGNITO_USER_POOL_ID=local-pool
       - VITE_COGNITO_CLIENT_ID=local-client
       - VITE_AWS_REGION=eu-central-1
+      - VITE_MOCK_AUTH=true
 
   # Terraform validation
   terraform:

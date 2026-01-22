@@ -21,6 +21,10 @@ build/
 .env.*
 !.env.example
 
+# Local AWS credentials (project-local)
+.aws/
+!.aws/credentials.example
+
 # IDE
 .idea/
 .vscode/
