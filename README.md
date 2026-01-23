@@ -2,7 +2,7 @@
 
 Real-time WebSocket chat built on AWS serverless primitives with a Vue 3 frontend. This repository contains everything from infrastructure as code to frontend and backend sources.
 
-- Docs: `docs/architecture.md` (system design), `docs/status.md` (project health), `todo.md` (deployment runbook)
+- Docs: `docs/architecture.md` (system design), `todo.md` (deployment runbook)
 
 ## Highlights
 - WebSocket messaging via API Gateway + Lambda + DynamoDB
