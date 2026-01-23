@@ -21,7 +21,12 @@ const logError = (...args: unknown[]) => {
 
 export function useWebSocket() {
   function connect(userId: string, username: string): void {
-    const wsUrl = import.meta.env.VITE_WEBSOCKET_URL;
+    const runtimeEnv = {
+      ...(import.meta as any)?.env,
+      ...(globalThis as any).import?.meta?.env,
+      ...(process.env as any),
+    };
+    const wsUrl = runtimeEnv?.VITE_WEBSOCKET_URL;
     if (!wsUrl) {
       connectionError.value = 'WebSocket URL not configured';
       return;

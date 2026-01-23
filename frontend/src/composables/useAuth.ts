@@ -161,6 +161,18 @@ export function useAuth() {
       Pool: userPool as CognitoUserPool,
     });
 
+    const handleSuccess = (userSession: CognitoUserSession) => {
+      isLoading.value = false;
+      currentUser.value = cognitoUser;
+      session.value = userSession;
+    };
+
+    const handleFailure = (err: any, reject: (reason?: unknown) => void) => {
+      isLoading.value = false;
+      error.value = err?.message || 'Authentication failed';
+      reject(err);
+    };
+
     const authDetails = new AuthenticationDetails({
       Username: email,
       Password: password,
@@ -169,15 +181,27 @@ export function useAuth() {
     return new Promise((resolve, reject) => {
       cognitoUser.authenticateUser(authDetails, {
         onSuccess: (userSession) => {
-          isLoading.value = false;
-          currentUser.value = cognitoUser;
-          session.value = userSession;
+          handleSuccess(userSession);
           resolve();
         },
         onFailure: (err) => {
-          isLoading.value = false;
-          error.value = err.message;
-          reject(err);
+          handleFailure(err, reject);
+        },
+        newPasswordRequired: () => {
+          // For temp-password users, complete the challenge by setting the provided password.
+          cognitoUser.completeNewPasswordChallenge(
+            password,
+            {},
+            {
+              onSuccess: (userSession) => {
+                handleSuccess(userSession);
+                resolve();
+              },
+              onFailure: (err) => {
+                handleFailure(err, reject);
+              },
+            }
+          );
         },
       });
     });
