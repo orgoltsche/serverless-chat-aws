@@ -8,9 +8,10 @@ locals {
 
 # VPC
 resource "aws_vpc" "main" {
-  cidr_block           = var.vpc_cidr
-  enable_dns_hostnames = true
-  enable_dns_support   = true
+  cidr_block                       = var.vpc_cidr
+  enable_dns_hostnames             = true
+  enable_dns_support               = true
+  assign_generated_ipv6_cidr_block = true
 
   tags = {
     Name = "${var.project_name}-${var.environment}-vpc"
@@ -32,8 +33,10 @@ resource "aws_subnet" "public" {
 
   vpc_id                  = aws_vpc.main.id
   cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index)
+  ipv6_cidr_block         = cidrsubnet(aws_vpc.main.ipv6_cidr_block, 8, count.index)
   availability_zone       = local.azs[count.index]
   map_public_ip_on_launch = true
+  assign_ipv6_address_on_creation = true
 
   tags = {
     Name = "${var.project_name}-${var.environment}-public-${local.azs[count.index]}"
@@ -47,7 +50,9 @@ resource "aws_subnet" "private" {
 
   vpc_id            = aws_vpc.main.id
   cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 10)
+  ipv6_cidr_block   = cidrsubnet(aws_vpc.main.ipv6_cidr_block, 8, count.index + 10)
   availability_zone = local.azs[count.index]
+  assign_ipv6_address_on_creation = true
 
   tags = {
     Name = "${var.project_name}-${var.environment}-private-${local.azs[count.index]}"
@@ -78,6 +83,15 @@ resource "aws_nat_gateway" "main" {
   depends_on = [aws_internet_gateway.main]
 }
 
+# Egress-Only Internet Gateway for IPv6
+resource "aws_egress_only_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-eoi"
+  }
+}
+
 # Public Route Table
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
@@ -85,6 +99,10 @@ resource "aws_route_table" "public" {
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.main.id
+  }
+  route {
+    ipv6_cidr_block = "::/0"
+    gateway_id      = aws_internet_gateway.main.id
   }
 
   tags = {
@@ -99,6 +117,10 @@ resource "aws_route_table" "private" {
   route {
     cidr_block     = "0.0.0.0/0"
     nat_gateway_id = aws_nat_gateway.main.id
+  }
+  route {
+    ipv6_cidr_block         = "::/0"
+    egress_only_gateway_id  = aws_egress_only_internet_gateway.main.id
   }
 
   tags = {

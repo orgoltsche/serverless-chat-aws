@@ -56,8 +56,8 @@ Browser (Vue) ── HTTPS ──► CloudFront ──► S3 (SPA hosting)
 - Local dev: `VITE_MOCK_AUTH=true` bypasses Cognito.
 
 ### Networking & Delivery
-- VPC `10.0.0.0/16` with two public + two private subnets (first two AZs).
-- Internet Gateway + NAT Gateway (egress for Lambdas).
+- VPC `10.0.0.0/16` dual-stack (IPv4 + generated IPv6) with two public + two private subnets (first two AZs).
+- Internet Gateway (IPv4/IPv6) + NAT Gateway (IPv4) + Egress-Only IGW (IPv6) for Lambda egress.
 - CloudFront enforces HTTPS; SPA routing supported (index fallback).
 
 ## Observability & Ops

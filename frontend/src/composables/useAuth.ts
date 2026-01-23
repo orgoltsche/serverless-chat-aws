@@ -7,24 +7,12 @@ import {
   CognitoUserSession,
 } from 'amazon-cognito-identity-js';
 
-const userPoolId = import.meta.env.VITE_COGNITO_USER_POOL_ID as string | undefined;
-const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID as string | undefined;
-const mockAuth = import.meta.env.VITE_MOCK_AUTH === 'true';
-
 const isValidUserPoolId = (value?: string) =>
   !!value && /^[\w-]+_[0-9A-Za-z]+$/.test(value);
 
 const isValidClientId = (value?: string) => !!value && value.length >= 10;
 
-const shouldUseMockAuth =
-  mockAuth || !isValidUserPoolId(userPoolId) || !isValidClientId(clientId);
-
-const userPool = shouldUseMockAuth
-  ? null
-  : new CognitoUserPool({
-      UserPoolId: userPoolId as string,
-      ClientId: clientId as string,
-    });
+const getEnv = () => ({ ...(import.meta as any)?.env, ...process.env });
 
 const currentUser = ref<CognitoUser | null>(null);
 const session = ref<CognitoUserSession | null>(null);
@@ -34,6 +22,23 @@ const mockUser = ref<{ email: string; nickname: string } | null>(null);
 const mockSession = ref(false);
 
 export function useAuth() {
+  const env = getEnv();
+  const userPoolId = env.VITE_COGNITO_USER_POOL_ID as string | undefined;
+  const clientId = env.VITE_COGNITO_CLIENT_ID as string | undefined;
+  const mockAuth = env.VITE_MOCK_AUTH === 'true';
+  const forceCognito = env.TEST_FORCE_COGNITO === 'true';
+
+  const shouldUseMockAuth =
+    !forceCognito &&
+    (mockAuth || !isValidUserPoolId(userPoolId) || !isValidClientId(clientId));
+
+  const userPool = shouldUseMockAuth
+    ? null
+    : new CognitoUserPool({
+        UserPoolId: userPoolId as string,
+        ClientId: clientId as string,
+      });
+
   if (shouldUseMockAuth) {
     const isAuthenticated = computed(() => mockSession.value);
     const username = computed(() => mockUser.value?.nickname || null);

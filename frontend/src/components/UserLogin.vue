@@ -27,7 +27,6 @@ async function handleSubmit() {
       mode.value = 'login';
       return;
     } else {
-      // branch marker for coverage when not confirming
     }
 
     if (mode.value === 'login') {

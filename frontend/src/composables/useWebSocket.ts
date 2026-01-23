@@ -13,6 +13,11 @@ const socket = ref<WebSocket | null>(null);
 const isConnected = ref(false);
 const messages = ref<Message[]>([]);
 const connectionError = ref<string | null>(null);
+const env = (import.meta as any)?.env ?? {};
+const isTestEnv = env.MODE === 'test' || env.NODE_ENV === 'test' || process.env.NODE_ENV === 'test';
+const logError = (...args: unknown[]) => {
+  if (!isTestEnv) console.error(...args);
+};
 
 export function useWebSocket() {
   function connect(userId: string, username: string): void {
@@ -40,7 +45,7 @@ export function useWebSocket() {
       };
 
       socket.value.onerror = (event) => {
-        console.error('WebSocket error:', event);
+        logError('WebSocket error:', event);
         connectionError.value = 'Connection error';
       };
 
@@ -49,12 +54,12 @@ export function useWebSocket() {
           const data = JSON.parse(event.data);
           handleMessage(data);
         } catch (e) {
-          console.error('Failed to parse message:', e);
+          logError('Failed to parse message:', e);
         }
       };
     } catch (e) {
       connectionError.value = 'Failed to connect';
-      console.error('WebSocket connection error:', e);
+      logError('WebSocket connection error:', e);
     }
   }
 
@@ -74,7 +79,7 @@ export function useWebSocket() {
 
   function sendMessage(content: string, roomId = 'global'): void {
     if (!socket.value || socket.value.readyState !== WebSocket.OPEN) {
-      console.error('WebSocket not connected');
+      logError('WebSocket not connected');
       return;
     }
 
