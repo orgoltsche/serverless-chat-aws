@@ -6,6 +6,8 @@ node_modules/
 dist/
 build/
 *.zip
+# Terraform lambda module needs a tiny placeholder zip so `terraform validate` works in CI.
+!infrastructure/modules/lambda/placeholder.zip
 
 # Terraform
 .terraform/
