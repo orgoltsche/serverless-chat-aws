@@ -10,7 +10,6 @@ terraform {
 
   backend "s3" {
     bucket         = "serverless-chat-terraform-state-eu-central-1"
-    key            = "terraform.tfstate"
     region         = "eu-central-1"
     encrypt        = true
     dynamodb_table = "terraform-state-lock"

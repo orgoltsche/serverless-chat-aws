@@ -41,7 +41,9 @@ jobs:
 
       - name: Terraform Init
         working-directory: infrastructure
-        run: terraform init
+        run: |
+          ENVIRONMENT="${{ github.event.inputs.environment || 'dev' }}"
+          terraform init -reconfigure -backend-config="key=serverless-chat/${ENVIRONMENT}.tfstate"
 
       - name: Terraform Plan
         working-directory: infrastructure
