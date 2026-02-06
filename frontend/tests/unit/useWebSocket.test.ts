@@ -47,13 +47,8 @@ describe('useWebSocket', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     lastSocket = null;
-    vi.stubGlobal('import', {
-      meta: {
-        env: {
-          VITE_WEBSOCKET_URL: 'wss://test.example.com',
-        },
-      },
-    });
+    // CI doesn't set VITE_* env vars for tests, so make unit tests explicit.
+    vi.stubEnv('VITE_WEBSOCKET_URL', 'wss://test.example.com');
     vi.stubGlobal('WebSocket', class extends MockWebSocket {
       constructor(url: string) {
         super(url);
@@ -79,6 +74,7 @@ describe('useWebSocket', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     vi.clearAllMocks();
     wrapper?.unmount();
     wrapper = null;
@@ -129,7 +125,7 @@ describe('useWebSocket', () => {
   });
 
   it('rejects missing websocket url and prevents sends when disconnected', () => {
-    (global as any).import.meta.env.VITE_WEBSOCKET_URL = '';
+    vi.stubEnv('VITE_WEBSOCKET_URL', '');
     const { connect, sendMessage, getMessages, connectionError } = composable;
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -148,7 +144,7 @@ describe('useWebSocket', () => {
   it('logs unknown message types and ignores bad payloads', async () => {
     const consoleErr = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { connect, connectionError } = composable;
-    (global as any).import.meta.env.VITE_WEBSOCKET_URL = 'wss://test.example.com';
+    vi.stubEnv('VITE_WEBSOCKET_URL', 'wss://test.example.com');
     connectionError.value = null;
 
     connect('user-1', 'TestUser');
@@ -165,7 +161,7 @@ describe('useWebSocket', () => {
   });
 
   it('sets connection error when websocket creation fails', () => {
-    (global as any).import.meta.env.VITE_WEBSOCKET_URL = 'wss://test.example.com';
+    vi.stubEnv('VITE_WEBSOCKET_URL', 'wss://test.example.com');
     class FailingWebSocket {
       constructor() {
         throw new Error('boom');
