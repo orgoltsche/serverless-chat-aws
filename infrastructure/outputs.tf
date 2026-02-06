@@ -22,3 +22,8 @@ output "frontend_bucket" {
   description = "S3 bucket name for frontend deployment"
   value       = module.frontend_hosting.bucket_name
 }
+
+output "cloudfront_distribution_id" {
+  description = "CloudFront distribution ID for frontend cache invalidation"
+  value       = module.frontend_hosting.cloudfront_distribution_id
+}

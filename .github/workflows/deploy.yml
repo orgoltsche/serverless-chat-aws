@@ -59,13 +59,14 @@ jobs:
           echo "cognito_user_pool_id=$(terraform output -raw cognito_user_pool_id)" >> $GITHUB_OUTPUT
           echo "cognito_client_id=$(terraform output -raw cognito_client_id)" >> $GITHUB_OUTPUT
           echo "frontend_bucket=$(terraform output -raw frontend_bucket)" >> $GITHUB_OUTPUT
-          echo "cloudfront_id=$(terraform output -raw frontend_url | sed 's/https:\/\///')" >> $GITHUB_OUTPUT
+          echo "cloudfront_distribution_id=$(terraform output -raw cloudfront_distribution_id)" >> $GITHUB_OUTPUT
 
     outputs:
       websocket_url: ${{ steps.tf-outputs.outputs.websocket_url }}
       cognito_user_pool_id: ${{ steps.tf-outputs.outputs.cognito_user_pool_id }}
       cognito_client_id: ${{ steps.tf-outputs.outputs.cognito_client_id }}
       frontend_bucket: ${{ steps.tf-outputs.outputs.frontend_bucket }}
+      cloudfront_distribution_id: ${{ steps.tf-outputs.outputs.cloudfront_distribution_id }}
 
   deploy-backend:
     name: Deploy Backend
@@ -100,10 +101,18 @@ jobs:
       - name: Deploy Lambda functions
         working-directory: backend
         run: |
+          ENVIRONMENT="${{ github.event.inputs.environment || 'dev' }}"
           for handler in connect disconnect sendMessage getMessages; do
             zip -j dist/${handler}.zip dist/${handler}.js dist/${handler}.js.map
+
+            case "$handler" in
+              sendMessage) function_name="serverless-chat-${ENVIRONMENT}-send-message" ;;
+              getMessages) function_name="serverless-chat-${ENVIRONMENT}-get-messages" ;;
+              *) function_name="serverless-chat-${ENVIRONMENT}-${handler}" ;;
+            esac
+
             aws lambda update-function-code \
-              --function-name serverless-chat-${{ github.event.inputs.environment || 'dev' }}-${handler} \
+              --function-name "$function_name" \
               --zip-file fileb://dist/${handler}.zip
           done
 
@@ -149,5 +158,5 @@ jobs:
       - name: Invalidate CloudFront
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id ${{ needs.deploy-infrastructure.outputs.cloudfront_id }} \
+            --distribution-id ${{ needs.deploy-infrastructure.outputs.cloudfront_distribution_id }} \
             --paths "/*"
