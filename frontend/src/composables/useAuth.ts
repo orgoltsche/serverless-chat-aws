@@ -7,12 +7,48 @@ import {
   CognitoUserSession,
 } from 'amazon-cognito-identity-js';
 
+type RuntimeEnv = {
+  VITE_COGNITO_USER_POOL_ID?: string;
+  VITE_COGNITO_CLIENT_ID?: string;
+  VITE_MOCK_AUTH?: string;
+  TEST_FORCE_COGNITO?: string;
+};
+
+function getStringEnv(
+  obj: Record<string, unknown>,
+  key: keyof RuntimeEnv
+): string | undefined {
+  const v = obj[key as string];
+  return typeof v === 'string' ? v : undefined;
+}
+
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'object' && err && 'message' in err) {
+    const msg = (err as { message?: unknown }).message;
+    return typeof msg === 'string' ? msg : 'Authentication failed';
+  }
+  return 'Authentication failed';
+}
+
 const isValidUserPoolId = (value?: string) =>
   !!value && /^[\w-]+_[0-9A-Za-z]+$/.test(value);
 
 const isValidClientId = (value?: string) => !!value && value.length >= 10;
 
-const getEnv = () => ({ ...(import.meta as any)?.env, ...process.env });
+const getEnv = (): RuntimeEnv => {
+  // Prefer Vite env, but allow tests to inject via a process env shim.
+  const procEnv = (globalThis as unknown as { process?: { env?: Record<string, unknown> } })
+    .process?.env;
+  const merged: Record<string, unknown> = { ...(procEnv || {}), ...import.meta.env };
+
+  return {
+    VITE_COGNITO_USER_POOL_ID: getStringEnv(merged, 'VITE_COGNITO_USER_POOL_ID'),
+    VITE_COGNITO_CLIENT_ID: getStringEnv(merged, 'VITE_COGNITO_CLIENT_ID'),
+    VITE_MOCK_AUTH: getStringEnv(merged, 'VITE_MOCK_AUTH'),
+    TEST_FORCE_COGNITO: getStringEnv(merged, 'TEST_FORCE_COGNITO'),
+  };
+};
 
 const currentUser = ref<CognitoUser | null>(null);
 const session = ref<CognitoUserSession | null>(null);
@@ -167,9 +203,9 @@ export function useAuth() {
       session.value = userSession;
     };
 
-    const handleFailure = (err: any, reject: (reason?: unknown) => void) => {
+    const handleFailure = (err: unknown, reject: (reason?: unknown) => void) => {
       isLoading.value = false;
-      error.value = err?.message || 'Authentication failed';
+      error.value = getErrorMessage(err);
       reject(err);
     };
 

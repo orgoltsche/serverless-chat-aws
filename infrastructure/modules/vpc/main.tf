@@ -31,11 +31,11 @@ resource "aws_internet_gateway" "main" {
 resource "aws_subnet" "public" {
   count = length(local.azs)
 
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index)
-  ipv6_cidr_block         = cidrsubnet(aws_vpc.main.ipv6_cidr_block, 8, count.index)
-  availability_zone       = local.azs[count.index]
-  map_public_ip_on_launch = true
+  vpc_id                         = aws_vpc.main.id
+  cidr_block                     = cidrsubnet(var.vpc_cidr, 8, count.index)
+  ipv6_cidr_block                = cidrsubnet(aws_vpc.main.ipv6_cidr_block, 8, count.index)
+  availability_zone              = local.azs[count.index]
+  map_public_ip_on_launch        = true
   assign_ipv6_address_on_creation = true
 
   tags = {
@@ -48,10 +48,10 @@ resource "aws_subnet" "public" {
 resource "aws_subnet" "private" {
   count = length(local.azs)
 
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 10)
-  ipv6_cidr_block   = cidrsubnet(aws_vpc.main.ipv6_cidr_block, 8, count.index + 10)
-  availability_zone = local.azs[count.index]
+  vpc_id                         = aws_vpc.main.id
+  cidr_block                     = cidrsubnet(var.vpc_cidr, 8, count.index + 10)
+  ipv6_cidr_block                = cidrsubnet(aws_vpc.main.ipv6_cidr_block, 8, count.index + 10)
+  availability_zone              = local.azs[count.index]
   assign_ipv6_address_on_creation = true
 
   tags = {
@@ -119,8 +119,8 @@ resource "aws_route_table" "private" {
     nat_gateway_id = aws_nat_gateway.main.id
   }
   route {
-    ipv6_cidr_block         = "::/0"
-    egress_only_gateway_id  = aws_egress_only_internet_gateway.main.id
+    ipv6_cidr_block        = "::/0"
+    egress_only_gateway_id = aws_egress_only_internet_gateway.main.id
   }
 
   tags = {

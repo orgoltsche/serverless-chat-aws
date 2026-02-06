@@ -9,24 +9,45 @@ export interface Message {
   createdAt: number;
 }
 
+type RuntimeEnv = {
+  VITE_WEBSOCKET_URL?: string;
+  MODE?: string;
+  NODE_ENV?: string;
+};
+
+function getRuntimeEnv(): RuntimeEnv {
+  const procEnv = (globalThis as unknown as { process?: { env?: Record<string, unknown> } })
+    .process?.env;
+  const merged: Record<string, unknown> = { ...(procEnv || {}), ...import.meta.env };
+
+  const getString = (k: keyof RuntimeEnv) => {
+    const v = merged[k as string];
+    return typeof v === 'string' ? v : undefined;
+  };
+
+  return {
+    VITE_WEBSOCKET_URL: getString('VITE_WEBSOCKET_URL'),
+    MODE: getString('MODE'),
+    NODE_ENV: getString('NODE_ENV'),
+  };
+}
+
 const socket = ref<WebSocket | null>(null);
 const isConnected = ref(false);
 const messages = ref<Message[]>([]);
 const connectionError = ref<string | null>(null);
-const env = (import.meta as any)?.env ?? {};
-const isTestEnv = env.MODE === 'test' || env.NODE_ENV === 'test' || process.env.NODE_ENV === 'test';
+const startupEnv = getRuntimeEnv();
+const isTestEnv =
+  startupEnv.MODE === 'test' ||
+  startupEnv.NODE_ENV === 'test';
 const logError = (...args: unknown[]) => {
   if (!isTestEnv) console.error(...args);
 };
 
 export function useWebSocket() {
   function connect(userId: string, username: string): void {
-    const runtimeEnv = {
-      ...(import.meta as any)?.env,
-      ...(globalThis as any).import?.meta?.env,
-      ...(process.env as any),
-    };
-    const wsUrl = runtimeEnv?.VITE_WEBSOCKET_URL;
+    const runtimeEnv = getRuntimeEnv();
+    const wsUrl = runtimeEnv.VITE_WEBSOCKET_URL;
     if (!wsUrl) {
       connectionError.value = 'WebSocket URL not configured';
       return;
@@ -56,8 +77,8 @@ export function useWebSocket() {
 
       socket.value.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data);
-          handleMessage(data);
+          const parsed: unknown = JSON.parse(event.data);
+          handleMessage(parsed);
         } catch (e) {
           logError('Failed to parse message:', e);
         }
@@ -68,16 +89,29 @@ export function useWebSocket() {
     }
   }
 
-  function handleMessage(data: { type: string; data: unknown }): void {
-    switch (data.type) {
+  function handleMessage(msg: unknown): void {
+    if (!msg || typeof msg !== 'object') {
+      connectionError.value = 'Invalid message';
+      return;
+    }
+
+    const type = (msg as { type?: unknown }).type;
+    const data = (msg as { data?: unknown }).data;
+
+    if (typeof type !== 'string') {
+      connectionError.value = 'Invalid message type';
+      return;
+    }
+
+    switch (type) {
       case 'messageHistory':
-        messages.value = data.data as Message[];
+        messages.value = (Array.isArray(data) ? (data as Message[]) : []);
         break;
       case 'newMessage':
-        messages.value.push(data.data as Message);
+        messages.value.push(data as Message);
         break;
       default:
-        console.log('Unknown message type:', data.type);
+        console.log('Unknown message type:', type);
         connectionError.value = 'Unknown message type';
     }
   }
