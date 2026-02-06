@@ -45,6 +45,29 @@ jobs:
           ENVIRONMENT="${{ github.event.inputs.environment || 'dev' }}"
           terraform init -reconfigure -backend-config="key=serverless-chat/${ENVIRONMENT}.tfstate"
 
+      - name: Import existing DynamoDB tables (if any)
+        working-directory: infrastructure
+        run: |
+          set -euo pipefail
+          ENVIRONMENT="${{ github.event.inputs.environment || 'dev' }}"
+          VAR_FILE="environments/${ENVIRONMENT}.tfvars"
+          PROJECT_NAME="serverless-chat"
+          CONNECTIONS_TABLE="${PROJECT_NAME}-${ENVIRONMENT}-connections"
+          MESSAGES_TABLE="${PROJECT_NAME}-${ENVIRONMENT}-messages"
+
+          # If resources already exist in AWS but aren't in the (new) state yet, import them.
+          if ! terraform state list | grep -qx 'module.dynamodb.aws_dynamodb_table.connections'; then
+            if aws dynamodb describe-table --table-name "$CONNECTIONS_TABLE" >/dev/null 2>&1; then
+              terraform import -var-file="$VAR_FILE" module.dynamodb.aws_dynamodb_table.connections "$CONNECTIONS_TABLE"
+            fi
+          fi
+
+          if ! terraform state list | grep -qx 'module.dynamodb.aws_dynamodb_table.messages'; then
+            if aws dynamodb describe-table --table-name "$MESSAGES_TABLE" >/dev/null 2>&1; then
+              terraform import -var-file="$VAR_FILE" module.dynamodb.aws_dynamodb_table.messages "$MESSAGES_TABLE"
+            fi
+          fi
+
       - name: Terraform Plan
         working-directory: infrastructure
         run: terraform plan -var-file=environments/${{ github.event.inputs.environment || 'dev' }}.tfvars -out=tfplan
