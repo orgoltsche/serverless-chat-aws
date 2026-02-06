@@ -1,0 +1,18 @@
+Semester Project Requirements
+
+
+Cloud & Networking
+- Use at least 3–4 AWS services.
+- Provide your own VPC with public and private subnets; IPv6-ready is optional.
+
+Infrastructure & Build
+- Provisioning via IaC/Terraform.
+- Use a build tool for the project.
+
+Testing & Quality
+- Implement 2 testing phases with example tests (at least one test per phase).
+- CI/CD pipelines.
+- Static code analysis and security scanning (GitHub/SonarCloud).
+
+Documentation & Transparency
+- Documentation is required.

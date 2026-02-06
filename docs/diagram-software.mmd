@@ -1,0 +1,38 @@
+%% Software architecture (logical flow)
+%% Mermaid flowchart; keep labels short for CLI rendering
+
+flowchart TD
+  %% Client
+  CLIENT[Browser / Vue 3 SPA]
+  AUTH[Cognito User Pool<br/>JWT]
+
+  %% API + handlers
+  APIGW[API Gateway v2<br/>WebSocket]
+  CONNECT[[connect]]
+  DISCONNECT[[disconnect]]
+  SEND[[sendMessage]]
+  GET[[getMessages]]
+
+  %% Data
+  CONN[(DynamoDB<br/>connections<br/>TTL 24h)]
+  MSG[(DynamoDB<br/>messages<br/>GSI userId-index)]
+
+  %% Flows
+  CLIENT -->|Sign-up / Auth| AUTH
+  CLIENT -- wss --> APIGW
+  APIGW --> CONNECT
+  APIGW --> DISCONNECT
+  APIGW --> SEND
+  APIGW --> GET
+
+  CONNECT --> CONN
+  DISCONNECT --> CONN
+  SEND --> MSG
+  GET --> MSG
+
+  %% Broadcast back to clients
+  SEND -- APIGW callback --> CLIENT
+
+  %% Auth checks
+  SEND -. verify JWT .-> AUTH
+  GET  -. verify JWT .-> AUTH

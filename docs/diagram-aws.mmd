@@ -1,0 +1,66 @@
+%% AWS infrastructure (physical/logical deployment)
+%% Layout tuned for readability (left-to-right)
+
+flowchart LR
+  %% Edge
+  subgraph Edge["Edge Delivery"]
+    CF[CloudFront]
+    S3[(S3 Static Hosting)]
+  end
+
+  %% API
+  subgraph API["WebSocket API"]
+    APIGW[API Gateway v2]
+  end
+
+  %% VPC + Compute
+  subgraph VPC["VPC"]
+    subgraph Compute["Lambdas Node.js 20 (private Subnets)"]
+      CONNECT[[connect]]
+      DISCONNECT[[disconnect]]
+      SEND[[sendMessage]]
+      GET[[getMessages]]
+    end
+    NAT[NAT Gateway]
+  end
+
+  %% Data & Auth
+  subgraph Data["Data"]
+    CONN[(DynamoDB connections)]
+    MSG[(DynamoDB messages)]
+  end
+
+  subgraph Auth["Authentication"]
+    COG[Cognito User Pool]
+  end
+
+  subgraph Obs["Logging / Observability"]
+    CW[CloudWatch Logs]
+  end
+  CLIENT[Browser]
+
+  %% Flows
+  CLIENT -->|HTTPS| CF --> S3
+  CLIENT -- wss --> APIGW
+  CLIENT -->|Signup / Login| COG
+
+  APIGW --> CONNECT
+  APIGW --> DISCONNECT
+  APIGW --> SEND
+  APIGW --> GET
+
+  CONNECT --> CONN
+  DISCONNECT --> CONN
+  SEND --> MSG
+  GET --> MSG
+
+  CONNECT --> CW
+  DISCONNECT --> CW
+  SEND --> CW
+  GET --> CW
+
+  SEND -. verify JWT .-> COG
+  GET  -. verify JWT .-> COG
+
+  %% Placement hint
+  NAT --- Compute
